@@ -39,7 +39,6 @@ AnafFiled_OdooField_Overwrite = [
     ("zip", "codPostal", "over_all_the_time"),
     ("phone", "telefon", "write_if_empty"),
     ("l10n_ro_caen_code", "cod_CAEN", "over_all_the_time"),
-    ("l10n_ro_e_invoice", "statusRO_e_Factura", "over_all_the_time"),
 ]
 
 
@@ -59,14 +58,6 @@ class ResPartner(models.Model):
         string="Romania - Partner Active Anaf Status",
         help="will add entries only if differs as statusInactivi from previos"
         " or after entries",
-        copy=False,
-    )
-    active_anaf_line_ids = fields.One2many(
-        "l10n.ro.res.partner.anaf.status",
-        "partner_id",
-        string="Romania - Partner Active Anaf Status",
-        help="will add entries only if differs as statusInactivi from previos"
-             " or after entries",
         copy=False,
     )
     l10n_ro_vat_subjected_anaf_line_ids = fields.One2many(
