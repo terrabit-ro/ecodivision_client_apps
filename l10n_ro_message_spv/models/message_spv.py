@@ -237,19 +237,19 @@ class MessageSPV(models.Model):
         return info_msg
 
     def get_invoice_from_move(self):
+        self.get_partner()
         messages_without_invoice = self.filtered(lambda m: not m.invoice_id)
         message_ids = messages_without_invoice.mapped("name")
         request_ids = messages_without_invoice.mapped("request_id")
-        invoices = self.env["account.move"].search(
-            [
-                "|",
-                ("l10n_ro_edi_download", "in", message_ids),
-                ("l10n_ro_edi_transaction", "in", request_ids),
-            ]
-        )
+        inv_domain = [
+            "|",
+            ("l10n_ro_edi_download", "in", message_ids),
+            ("l10n_ro_edi_transaction", "in", request_ids),
+        ]
+        invoices = self.env["account.move"].search(inv_domain)
         domain = [("name", "in", messages_without_invoice.mapped("ref"))]
         invoices |= self.env["account.move"].search(domain)
-        invoices = invoices.filtered(lambda i: i.state == "posted")
+
         for message in messages_without_invoice:
             invoice = invoices.filtered(
                 lambda i, m=message: i.l10n_ro_edi_download == m.name
@@ -270,13 +270,39 @@ class MessageSPV(models.Model):
                     ("move_type", "in", move_type),
                 ]
                 invoice = self.env["account.move"].search(domain, limit=1)
-
+            if len(invoice) > 1:
+                _logger.warning(
+                    "Multiple invoices found for message %s: %s",
+                    message.name,
+                    invoice.ids,
+                )
             if invoice:
                 message.write({"invoice_id": invoice[0].id})
+            if len(invoice) == 1:
+                message.write({"invoice_id": invoice.id})
+                if message.message_type == "message":
+                    msg = _("You received a message from ANAF for invoice %s") % (
+                        invoice.name
+                    )
+                    msg += f"\n{message.message}"
+                    self.env["account.edi.format"].l10n_ro_edi_post_message(
+                        invoice, msg, {}
+                    )
+                if (
+                    not invoice.l10n_ro_edi_download
+                    and not invoice.l10n_ro_edi_transaction
+                ):
+                    invoice.write(
+                        {
+                            "l10n_ro_edi_download": message.name,
+                            "l10n_ro_edi_transaction": message.request_id,
+                        }
+                    )
 
         self.get_data_from_invoice()
 
     def get_data_from_invoice(self):
+        self.get_partner()
         for message in self:
             if not message.invoice_id:
                 continue
@@ -291,7 +317,8 @@ class MessageSPV(models.Model):
 
             message.write(
                 {
-                    "partner_id": message.invoice_id.commercial_partner_id.id,
+                    "partner_id": message.invoice_id.commercial_partner_id.id
+                    or message.partner_id.id,
                     "invoice_amount": invoice_amount,
                     "state": state,
                 }
@@ -303,11 +330,12 @@ class MessageSPV(models.Model):
                 attachments += message.attachment_xml_id
                 attachments += message.attachment_anaf_pdf_id
                 attachments += message.attachment_embedded_pdf_id
-                attachments.write(
+                attachments.sudo().write(
                     {"res_id": message.invoice_id.id, "res_model": "account.move"}
                 )
 
     def create_invoice(self):
+        self.get_partner()
         for message in self.filtered(lambda m: not m.invoice_id):
             if not message.message_type == "in_invoice":
                 continue
@@ -325,7 +353,7 @@ class MessageSPV(models.Model):
                     "l10n_ro_edi_transaction": message.request_id,
                 }
             )
-            zip_content = message.attachment_id.raw
+            zip_content = message.sudo().attachment_id.raw
             attachment = new_invoice.l10n_ro_save_anaf_xml_file(zip_content)
             try:
                 new_invoice.l10n_ro_process_anaf_xml_file(attachment)
@@ -370,7 +398,7 @@ class MessageSPV(models.Model):
             if not message.attachment_xml_id:
                 message.get_xml_fom_zip()
 
-            xml_file = message.attachment_xml_id.raw
+            xml_file = message.attachment_xml_id.sudo().raw
             headers = {"Content-Type": "text/plain"}
             xml = xml_file
             val1 = "FACT1"
@@ -404,7 +432,7 @@ class MessageSPV(models.Model):
                 )
                 if message.attachment_anaf_pdf_id:
                     message.attachment_anaf_pdf_id.sudo().unlink()
-                message.write({"attachment_anaf_pdf_id": attachment_pdf.id})
+                message.sudo().write({"attachment_anaf_pdf_id": attachment_pdf.id})
 
     def get_embedded_pdf(self):
         for message in self:
@@ -462,9 +490,28 @@ class MessageSPV(models.Model):
         self.ensure_one()
         return self._action_download(self.attachment_embedded_pdf_id.id)
 
-    def _action_download(self, attachment_field_id):
+    def _action_download(self, attachment_id):
+        attachment = self.env["ir.attachment"].sudo().browse(attachment_id)
+        attachment.generate_access_token()
+        access_token = attachment.access_token
         return {
             "type": "ir.actions.act_url",
-            "url": f"/web/content/{attachment_field_id}?download=true",
+            "url": f"/web/content/{attachment_id}?download=true&access_token={access_token}",  # noqa
             "target": "self",
         }
+
+    def get_partner(self):
+
+        for message in self.filtered(lambda m: not m.partner_id):
+            if message.cif:
+                domain = [("vat", "like", message.cif), ("is_company", "=", True)]
+                partner = self.env["res.partner"].search(domain, limit=1)
+                if not partner:
+                    partner = self.env["res.partner"].create(
+                        {
+                            "name": message.cif,
+                            "vat": message.cif,
+                            "is_company": True,
+                        }
+                    )
+                message.write({"partner_id": partner.id})

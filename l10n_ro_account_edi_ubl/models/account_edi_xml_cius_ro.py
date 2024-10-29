@@ -154,8 +154,10 @@ class AccountEdiXmlCIUSRO(models.Model):
 
     def _get_invoice_line_item_vals(self, line, taxes_vals):
         vals = super()._get_invoice_line_item_vals(line, taxes_vals)
-        vals["description"] = vals["description"][:200]
-        vals["name"] = vals["name"][:100]
+        name = vals.get("name") or "n/a"
+        vals["name"] = name[:100]
+        description = vals.get("description") or vals["name"]
+        vals["description"] = description[:200]
         if vals["classified_tax_category_vals"]:
             if vals["classified_tax_category_vals"][0]["tax_category_code"] in (
                 "AE",
@@ -281,12 +283,35 @@ class AccountEdiXmlCIUSRO(models.Model):
             val["id"] = index
             index += 1
 
-        if invoice.move_type in ("out_invoice", "in_invoice"):
+        if invoice.move_type in (
+            "out_invoice",
+            "in_invoice",
+            "out_refund",
+            "in_refund",
+        ):
             vals_list["main_template"] = "account_edi_ubl_cii.ubl_20_Invoice"
             vals_list["vals"]["invoice_type_code"] = 380
-        else:
-            vals_list["main_template"] = "account_edi_ubl_cii.ubl_20_CreditNote"
-            vals_list["vals"]["credit_note_type_code"] = 381
+            if (
+                invoice.move_type in ("in_invoice", "in_refund")
+                and invoice.journal_id.l10n_ro_sequence_type == "autoinv2"
+            ) or (
+                invoice.journal_id.type == "sale"
+                and invoice.journal_id.l10n_ro_sequence_type == "autoinv1"
+            ):
+                vals_list["vals"]["invoice_type_code"] = 389
+            point_of_sale = (
+                self.env["ir.module.module"]
+                .sudo()
+                .search(
+                    [("name", "=", "point_of_sale"), ("state", "=", "installed")],
+                    limit=1,
+                )
+            )
+            if point_of_sale:
+                if invoice.pos_order_ids:
+                    vals_list["vals"]["invoice_type_code"] = 751
+        if vals_list["vals"].get("credit_note_type_code"):
+            vals_list["vals"].pop("credit_note_type_code")
         result_list = []
         if vals_list["vals"].get("note_vals"):
             if len(vals_list["vals"]["note_vals"][0]) > 100:

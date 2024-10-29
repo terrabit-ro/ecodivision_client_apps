@@ -31,23 +31,12 @@ class ResConfigSettings(models.TransientModel):
         related="company_id.l10n_ro_account_serv_sale_tax_id",
         readonly=False,
     )
-    serv_sale_tax_id = fields.Many2one(
-        "account.tax",
-        string="Default Services Sale Tax",
-        related="company_id.l10n_ro_account_serv_sale_tax_id",
-        readonly=False,
-    )
     l10n_ro_serv_purchase_tax_id = fields.Many2one(
         "account.tax",
         related="company_id.l10n_ro_account_serv_purchase_tax_id",
         readonly=False,
     )
-    serv_purchase_tax_id = fields.Many2one(
-        "account.tax",
-        string="Default Services Purchase Tax",
-        related="company_id.l10n_ro_account_serv_purchase_tax_id",
-        readonly=False,
-    )
+
     l10n_ro_property_vat_on_payment_position_id = fields.Many2one(
         "account.fiscal.position",
         related="company_id.l10n_ro_property_vat_on_payment_position_id",
