@@ -96,7 +96,6 @@ class AccountEdiXmlCIUSRO(models.Model):
         is_required = (
             invoice.move_type in ("out_invoice", "out_refund")
             and invoice.commercial_partner_id.country_id.code == "RO"
-            and invoice.commercial_partner_id.is_company
         )
         if not is_required:
             is_required = (
@@ -243,7 +242,7 @@ class AccountEdiXmlCIUSRO(models.Model):
 
     def _l10n_ro_post_invoice_step_1(self, invoice, attachment):
         anaf_config = invoice.company_id._l10n_ro_get_anaf_sync(scope="e-factura")
-        standard = "UBL"
+        standard = "CN" if "refund" in invoice.move_type else "UBL"
         params = {
             "standard": standard,
             "cif": invoice.company_id.partner_id.vat.replace("RO", ""),

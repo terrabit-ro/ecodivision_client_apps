@@ -25,17 +25,10 @@ class ResPartner(models.Model):
                 partner.l10n_ro_anaf_history = [(6, 0, [])]
 
     l10n_ro_vat_on_payment = fields.Boolean(string="Romania - VAT on Payment")
-    vat_on_payment = fields.Boolean(string="Romania - VAT on Payment - Obsolete")
     l10n_ro_anaf_history = fields.One2many(
         "l10n.ro.res.partner.anaf",
         compute="_compute_l10n_ro_anaf_history",
         string="Romania - ANAF History",
-        readonly=True,
-    )
-    anaf_history = fields.One2many(
-        "l10n.ro.res.partner.anaf",
-        compute="_compute_l10n_ro_anaf_history",
-        string="Romania - ANAF History - Obsolete",
         readonly=True,
     )
 
@@ -83,7 +76,6 @@ class ResPartner(models.Model):
         self.ensure_one()
         ctx = dict(self._context)
         vat_on_payment = False
-        self._compute_l10n_ro_vat_number()
         self._insert_relevant_anaf_data()
         self._compute_l10n_ro_anaf_history()
         if self.l10n_ro_anaf_history:
